@@ -576,9 +576,9 @@ export const ENTRIES: Record<string, Entry> = {
   ServerPlayerMaxNum: {
     name: "Server Player Max Num",
     id: "ServerPlayerMaxNum",
-    defaultValue: "32",
+    defaultValue: "8", // 默认最大玩家数量
     type: "integer",
-    range: [1, 512],
+    range: [1, 8], // 可取值范围
     desc: "Server player max num",
   },
   ServerName: {

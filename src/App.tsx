@@ -1,5 +1,5 @@
 import "./App.css";
-
+import axios from "axios";
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // i18n
@@ -51,8 +51,9 @@ interface ChangeEvent<T> {
 }
 
 enum FileMode {
-  INI = "ini",
   SAV = "sav",
+  INI = "ini",
+  // SAV = "sav",
 }
 
 enum SettingCategory {
@@ -65,7 +66,7 @@ function App() {
   const { t } = useTranslation();
   const [locale, setLocale] = useState(i18n.language === "en" ? "en_US" : i18n.language);
   const [entries, setEntries] = useState({} as Record<string, string>);
-  const [fileMode, setFileMode] = useState<FileMode>(FileMode.INI);
+  const [fileMode, setFileMode] = useState<FileMode>(FileMode.SAV); // 这里确定了默认是SAV模式
   const [openedAccordion, setOpenedAccordion] = useState(SettingCategory.ServerSettings);
   const [showUploadPrompt, setShowUploadPrompt] = useState(false);
   const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
@@ -301,41 +302,63 @@ function App() {
     setEntries(newEntries);
   };
 
-  const openSavFile = async (f: File) => {
-    const result = await analyzeFile(f, (e) => {
+  const openSavFile = async () => {
+    try {
+      const response = await axios.get("http://localhost:3001/api/file/read", {
+        responseType: 'arraybuffer'
+      });
+  
+      if (response.status === 200 && response.data) {
+        // 将ArrayBuffer转换为File对象，以匹配原analyzeFile接口
+        const file = new File([response.data], 'savefile.sav', { type: 'application/octet-stream' });
+        
+        // 使用原analyzeFile函数处理
+        const result = await analyzeFile(file, (e) => {
+          console.error(e);
+          toast.error(t(I18nStr.toast.invalidFile), {
+            description: t(I18nStr.toast.invalidFileDescription),
+          });
+        }).catch((e) => {
+          console.error(e);
+        });
+  
+        if (!result) return;
+  
+        const gvas: Gvas = result.gvas ?? DEFAULT_WORLDOPTION_SAV.gvas;
+        
+        toast.success(t(I18nStr.toast.savFileLoaded), {
+          description: t(I18nStr.toast.savFileLoadedDescription),
+        });
+        
+        deserializeEntriesFromGvasJson(gvas);
+      } else {
+        throw new Error("Invalid response from server");
+      }
+    } catch (e) {
       console.error(e);
       toast.error(t(I18nStr.toast.invalidFile), {
         description: t(I18nStr.toast.invalidFileDescription),
       });
-    }).catch((e) => {
-      console.error(e);
-    });
-    if (!result) {
-      return;
     }
-    // console.log(result);
-    // console.log('magic: ' + result.magic);
-    const gvas: Gvas = result.gvas ?? DEFAULT_WORLDOPTION_SAV.gvas;
-    toast.success(t(I18nStr.toast.savFileLoaded), {
-      description: t(I18nStr.toast.savFileLoadedDescription),
-    });
-    deserializeEntriesFromGvasJson(gvas);
   };
 
-  const saveFile = () => {
+
+
+
+  const saveFile = async () => {
+    try {
     const gvasToSave: Gvas = LosslessJSON.parse(LosslessJSON.stringify(DEFAULT_WORLDOPTION_SAV.gvas)!) as Gvas;
     gvasToSave.root.properties.OptionWorldData.Struct.value.Struct.Settings.Struct.value.Struct = serializeEntriesToWorldOptionJson() as WorldOption;
-    writeFile(
+    const buf = writeFile(
       {
         magic: 828009552,
         gvas: gvasToSave,
       },
-      "WorldOption.sav",
       () => {
-        toast.success(t(I18nStr.toast.saved), {
-          description: t(I18nStr.toast.savedDescription),
-        });
-      },
+      toast.success(t(I18nStr.toast.saved), {
+        description: t(I18nStr.toast.savedDescription),
+      });
+    },
       (e) => {
         console.error(e);
         toast.error(t(I18nStr.toast.saveFailed), {
@@ -343,7 +366,107 @@ function App() {
         });
       }
     );
+      // 3. 创建FormData对象传输二进制文件
+      const formData = new FormData();
+      if (!buf) {
+        throw new Error("Buffer is undefined");
+      }
+      const blob = new Blob([buf], { type: "application/binary" });
+      formData.append('file', blob, 'WorldOption.sav');
+  
+      // 4. 发送到REST API
+      const response = await axios.post('http://localhost:3001/api/file/save', formData, {
+        headers: {
+          'Content-Type': 'application/octet-stream'
+        }
+      });
+  
+  
+      if (response.status === 200) {
+        toast.success(t(I18nStr.toast.saved), {
+          description: t(I18nStr.toast.savedDescription),
+        });
+      } else {
+        throw new Error(`保存失败: ${response.statusText}`);
+      }
+    } catch (e) {
+      console.error('保存出错:', e);
+      toast.error(t(I18nStr.toast.saveFailed), {
+        description: t(I18nStr.toast.saveFailedDescription),
+      });
+    }
+
+  
   };
+
+
+
+  // const saveFile = async () => {
+  //   try {
+  //     // 1. 准备GVAS数据（保持原有逻辑）
+  //     const gvasToSave: Gvas = LosslessJSON.parse(
+  //       LosslessJSON.stringify(DEFAULT_WORLDOPTION_SAV.gvas)!
+  //     ) as Gvas;
+      
+  //     gvasToSave.root.properties.OptionWorldData.Struct.value.Struct.Settings.Struct.value.Struct = 
+  //       serializeEntriesToWorldOptionJson() as WorldOption;
+  
+  //     // 2. 生成二进制数据（修改writeFile函数使其返回Buffer）
+  //     const savBuffer = await writeFile({
+  //       magic: 828009
+  //       gvas: gvasToSave
+  //     });
+  
+  //     // 3. 创建FormData对象传输二进制文件
+  //     const formData = new FormData();
+  //     formData.append('file', new Blob([savBuffer], { type: 'application/binary' }), 'WorldOption.sav');
+  
+  //     // 4. 发送到REST API
+  //     const response = await axios.post('http://localhost:3001/api/file/save', formData, {
+  //       headers: {
+  //         'Content-Type': 'multipart/form-data'
+  //       }
+  //     });
+  
+  //     if (response.status === 200) {
+  //       toast.success(t(I18nStr.toast.saved), {
+  //         description: t(I18nStr.toast.savedDescription),
+  //       });
+  //     } else {
+  //       throw new Error(`保存失败: ${response.statusText}`);
+  //     }
+  //   } catch (e) {
+  //     console.error('保存出错:', e);
+  //     toast.error(t(I18nStr.toast.saveFailed), {
+  //       description: t(I18nStr.toast.saveFailedDescription),
+  //     });
+  //   }
+  // };
+  
+ 
+  // 原有 saveFile 函数
+  // const saveFile = () => {
+  //   const gvasToSave: Gvas = LosslessJSON.parse(LosslessJSON.stringify(DEFAULT_WORLDOPTION_SAV.gvas)!) as Gvas;
+  //   gvasToSave.root.properties.OptionWorldData.Struct.value.Struct.Settings.Struct.value.Struct = serializeEntriesToWorldOptionJson() as WorldOption;
+  //   writeFile(
+  //     {
+  //       magic: 828009552,
+  //       gvas: gvasToSave,
+  //     },
+  //     "WorldOption.sav",
+  //     () => {
+  //       toast.success(t(I18nStr.toast.saved), {
+  //         description: t(I18nStr.toast.savedDescription),
+  //       });
+  //     },
+  //     (e) => {
+  //       console.error(e);
+  //       toast.error(t(I18nStr.toast.saveFailed), {
+  //         description: t(I18nStr.toast.saveFailedDescription),
+  //       });
+  //     }
+  //   );
+  // };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -382,7 +505,7 @@ function App() {
       setFileMode(FileMode.INI);
       return;
     }
-    openSavFile(file)
+    openSavFile()
       .then(() => {
         // console.log("File opened");
         if (fileInputRef.current) {
@@ -633,7 +756,7 @@ function App() {
                       i18n
                         .changeLanguage(value)
                         .then(() => {
-                          // console.log("Language changed to " + value)
+                          console.log("Language changed to " + value)
                         })
                         .catch((e) => {
                           console.error(e);
@@ -714,7 +837,7 @@ function App() {
         </Card>
         <Card className="w-full max-w-3xl mt-8 sticky bottom-0 z-10 shadow-lg">
           <CardHeader>
-            <Tabs value={fileMode} className="flex flex-col w-full min-h-10" onValueChange={(v) => setFileMode(v as FileMode)}>
+            {/* <Tabs value={fileMode} className="flex flex-col w-full min-h-10" onValueChange={(v) => setFileMode(v as FileMode)}>
               <TabsList>
                 <TabsTrigger className="w-[50%]" value={FileMode.INI}>
                   PalWorldSettings.ini
@@ -722,7 +845,14 @@ function App() {
                 <TabsTrigger className="w-[50%]" value={FileMode.SAV}>
                   WorldOption.sav
                 </TabsTrigger>
-              </TabsList>
+              </TabsList> */}
+
+              <Tabs value={fileMode} className="flex flex-col w-full min-h-10" onValueChange={(v) => setFileMode(v as FileMode)}>
+              <TabsList>
+                <TabsTrigger className="w-[100%]" value={FileMode.SAV}>
+                  WorldOption.sav
+                </TabsTrigger>
+                </TabsList>
               <Input className="hidden w-[50%]" id="file-upload" type="file" ref={fileInputRef} onChange={handleFileInput} />
               <div className="mt-4">
                 <TabsContent value={FileMode.INI} className="flex justify-between items-center gap-4 mt-0">
@@ -737,12 +867,17 @@ function App() {
                   </Button>
                 </TabsContent>
                 <TabsContent value={FileMode.SAV} className="flex justify-between items-center gap-4 mt-0">
-                  <Button onClick={() => fileInputRef.current?.click()}>
-                    <Trans i18nKey={I18nStr.upload} />
+                  <Button
+                  className=""
+                  onClick={() => {
+                    openSavFile();
+                  }}
+                  >
+                  <Trans i18nKey={I18nStr.upload} />
                   </Button>
-                  <div className="text-sm text-muted-foreground">
+                  {/* <div className="text-sm text-muted-foreground">
                     <Trans i18nKey={I18nStr.dragAndDrop} />
-                  </div>
+                  </div> */}
                   <Button className="" onClick={saveFile}>
                     <Trans i18nKey={I18nStr.download} />
                   </Button>
@@ -751,7 +886,7 @@ function App() {
             </Tabs>
           </CardHeader>
         </Card>
-        <Alert className="w-full max-w-3xl mt-8 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+        {/* <Alert className="w-full max-w-3xl mt-8 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>
             <Trans
@@ -777,11 +912,11 @@ function App() {
               </>
             )}
           </AlertDescription>
-        </Alert>
+        </Alert> */}
         <div className="w-full max-w-3xl mt-8 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
           <pre className="text-wrap break-all whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">{settingsText}</pre>
         </div>
-        <div className="w-full max-w-3xl flex justify-center pt-2">
+        {/* <div className="w-full max-w-3xl flex justify-center pt-2">
           2024-{`${new Date().getFullYear()}`} @Bluefissure
           <a
             href="https://github.com/Bluefissure/pal-conf"
@@ -792,7 +927,7 @@ function App() {
             Github
           </a>
           {__COMMIT_HASH__ && (`@${__COMMIT_HASH__}`)}
-        </div>
+        </div> */}
       </main>
       <Dialog open={pasteDialogOpen} onOpenChange={setPasteDialogOpen}>
         <DialogContent>

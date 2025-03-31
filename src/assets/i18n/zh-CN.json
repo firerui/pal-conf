@@ -1,7 +1,7 @@
 {
   "translation": {
     "unknown": "未知",
-    "title": "幻兽帕鲁服务器配置生成器",
+    "title": "幻兽帕鲁服务器配置修改器(在线专用版)",
     "introduction": "修改值，下面的输出将实时更新。",
     "serverSettings": "服务器设置",
     "ingameSettings": "游戏内设置",
@@ -12,8 +12,8 @@
     "load": "加载",
     "copy": "复制",
     "paste": "粘贴",
-    "upload": "上传",
-    "download": "下载",
+    "upload": "读取配置",
+    "download": "设定配置",
     "dragAndDrop": "你可以拖拽 PalWorldSettings.ini 或 WorldOption.sav 到这里",
     "easier": "更简单",
     "harder": "更难",

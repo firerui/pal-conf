@@ -81,12 +81,44 @@ export const analyzeFile = async (
 }
 
 
+ // 修改后的writeFile变体，返回生成的Buffer
+//  export const writeFile = async ({ magic, gvas }: { magic: number; gvas: Gvas }): Promise<Buffer> => {
+//     return new Promise((resolve, reject) => {
+//       try {
+//         const jsonToSerialize = LosslessJSON.stringify(gvas) ?? "{}";
+//         let serialized = serialize(jsonToSerialize);
+//         const lenDecompressed = serialized.length;
+//         const leadingByte = (magic & 0xff000000) >> 24;
+        
+//         if (leadingByte == 0x32) {
+//           serialized = pako.deflate(serialized);
+//           serialized = pako.deflate(serialized);
+//         } else if (leadingByte == 0x31) {
+//           serialized = pako.deflate(serialized);
+//         }
+  
+//         const lenCompressed = serialized.length;
+//         const buf = Buffer.alloc(4 + 4 + 4 + lenCompressed);
+  
+//         buf.writeInt32LE(lenDecompressed);
+//         buf.writeInt32LE(lenCompressed, 4);
+//         buf.writeInt32LE(magic, 8);
+//         buf.set(serialized, 12);
+        
+//         resolve(buf);
+//       } catch (e) {
+//         reject(e);
+//       }
+//     });
+//   };
+
+
 export const writeFile = (
     { magic, gvas } : {
         magic: number,
         gvas: Gvas
     },
-    filename = "save.sav",
+    // filename = "save.sav",
     onWriteSuccess?: () => void,
     onWriteError?: (e: unknown) => void,
 ) => {
@@ -110,7 +142,8 @@ export const writeFile = (
     buf.writeInt32LE(lenCompressed, 4);
     buf.writeInt32LE(magic, 8);
     buf.set(serialized, 12);
-    saveAs(new Blob([buf], {type: "application/binary"}), filename);
+    return buf;
+    // saveAs(new Blob([buf], {type: "application/binary"}), filename);
     onWriteSuccess?.();
   } catch (e) {
     console.error(e);
@@ -119,3 +152,44 @@ export const writeFile = (
   }
 
 }
+
+
+// 原wirteFile 函数
+// export const writeFile = (
+//     { magic, gvas } : {
+//         magic: number,
+//         gvas: Gvas
+//     },
+//     filename = "save.sav",
+//     onWriteSuccess?: () => void,
+//     onWriteError?: (e: unknown) => void,
+// ) => {
+//   try {
+//     const jsonToSerialize = LosslessJSON.stringify(gvas) ?? "{}";
+//     // console.log('to serialize', jsonToSerialize);
+//     let serialized = serialize(jsonToSerialize);
+//     const lenDecompressed = serialized.length;
+//     const leadingByte = (magic & 0xff000000) >> 24;
+//     if (leadingByte == 0x32) {
+//         serialized = pako.deflate(serialized);
+//         serialized = pako.deflate(serialized);
+//     } else if (leadingByte == 0x31) {
+//         serialized = pako.deflate(serialized);
+//     }
+
+//     const lenCompressed = serialized.length;
+//     const buf = Buffer.alloc(4 + 4 + 4 + lenCompressed);
+
+//     buf.writeInt32LE(lenDecompressed);
+//     buf.writeInt32LE(lenCompressed, 4);
+//     buf.writeInt32LE(magic, 8);
+//     buf.set(serialized, 12);
+//     saveAs(new Blob([buf], {type: "application/binary"}), filename);
+//     onWriteSuccess?.();
+//   } catch (e) {
+//     console.error(e);
+//     onWriteError?.(e);
+//     // alert("Serialization failed. Have you accidentally removed something?");
+//   }
+
+// }
